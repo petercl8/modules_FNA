@@ -218,7 +218,7 @@ def show_multiple_unmatched_tensors(*image_tensors, cmap='inferno', fig_size=3):
 
     smart_show()
 
-def show_multiple_matched_tensors(*image_tensors, cmap='inferno', fig_size=1.5):
+def show_multiple_matched_tensors(*image_tensors, cmap='inferno', fig_size=1.5, print_shapes=True):
     '''
     Function for visualizing images from multiple tensors. Each image is "matched" with images from the other tensors,
     and each matched set of images (one from each tensor) is plotted with the same colormap in a column.
@@ -226,10 +226,11 @@ def show_multiple_matched_tensors(*image_tensors, cmap='inferno', fig_size=1.5):
 
     image_tensors:  list of tensors, each of which may contain multiple images.
     '''
-    for tensor in image_tensors:
-        # Begin by printing statistics for each tensor
-        print(f'Shape: {tensor.shape} // Min: {torch.min(tensor)} // Max: {torch.max(tensor)} \
-        // Mean: {torch.mean(tensor)} // Mean Sum (per image): {torch.sum(tensor).item()/(tensor.shape[0]*tensor.shape[1])} // Sum (a single image): {torch.sum(tensor[0,0,:])}')
+    if print_shapes:
+        for tensor in image_tensors:
+            # Begin by printing statistics for each tensor
+            print(f'Shape: {tensor.shape} // Min: {torch.min(tensor)} // Max: {torch.max(tensor)} \
+            // Mean: {torch.mean(tensor)} // Mean Sum (per image): {torch.sum(tensor).item()/(tensor.shape[0]*tensor.shape[1])} // Sum (a single image): {torch.sum(tensor[0,0,:])}')
 
     combined_tensor = torch.cat(image_tensors, dim=0).detach().cpu()
     combined_tensor = torch.clamp(combined_tensor, min=0)
@@ -265,7 +266,8 @@ def show_multiple_matched_tensors(*image_tensors, cmap='inferno', fig_size=1.5):
 
     ## Plot Multi-Channel Images ##
     else:
-        print(f'Mean (Ch 0): {torch.mean(combined_tensor[:,0,:,:])} // Mean (Ch 1): {torch.mean(combined_tensor[:,1,:,:])} // Mean (Ch 2): {torch.mean(combined_tensor[:,2,:,:])}')
+        if print_shapes:
+            print(f'Mean (Ch 0): {torch.mean(combined_tensor[:,0,:,:])} // Mean (Ch 1): {torch.mean(combined_tensor[:,1,:,:])} // Mean (Ch 2): {torch.mean(combined_tensor[:,2,:,:])}')
 
         #if num_cols>3:  # Restricts to 3-channels. You could get rid of this without an issue.
         #    num_cols=3
@@ -300,6 +302,83 @@ def show_multiple_matched_tensors(*image_tensors, cmap='inferno', fig_size=1.5):
                 ax[row, i].axis('off')
                 ax[row, i].imshow(blank.squeeze())
             i+=1
+
+    smart_show()
+
+def show_multiple_matched_row_tensors(*image_tensors, cmap='inferno', fig_size=1.5, print_shapes=True):
+    '''
+    Function for visualizing images from multiple tensors. Each image is "matched" with images from the other tensors,
+    and each row of images is plotted with the same colormap.
+    Send only the images you want plotted to this function. Works with both single channel and multi-channel images.
+
+    image_tensors:  list of tensors, each of which may contain multiple images.
+    '''
+    if print_shapes:
+        for tensor in image_tensors:
+            print(f'Shape: {tensor.shape} // Min: {torch.min(tensor)} // Max: {torch.max(tensor)} \
+            // Mean: {torch.mean(tensor)} // Mean Sum (per image): {torch.sum(tensor).item()/(tensor.shape[0]*tensor.shape[1])} // Sum (a single image): {torch.sum(tensor[0,0,:])}')
+
+    combined_tensor = torch.cat(image_tensors, dim=0).detach().cpu()
+    combined_tensor = torch.clamp(combined_tensor, min=0)
+
+    num_rows = len(image_tensors)
+    num_cols = len(image_tensors[0])
+    num_chan = image_tensors[0].size(dim=1)
+
+    ## Plot 1 Channel Images ##
+    if num_chan==1:
+        fig, ax = plt.subplots(num_rows, num_cols, squeeze=False, figsize=(fig_size*num_cols, fig_size*num_rows), constrained_layout=True)
+
+        for row in range(0,num_rows):
+            img_list=[]
+            min_list=[]
+            max_list=[]
+
+            # Construct a normalization object for all images in a row.
+            for col in range(0, num_cols):
+                img = combined_tensor[row*num_cols+col, 0, :, :]
+                img_list.append(img)
+                min_list.append(torch.min(img).item())
+                max_list.append(torch.max(img).item())
+            norm = Normalize(vmin=min(min_list), vmax=max(max_list))
+
+            for col in range(0, num_cols):
+                ax[row, col].axis('off')
+                ax[row, col].imshow(img_list[col].squeeze(), cmap=cmap, norm=norm)
+
+    ## Plot Multi-Channel Images ##
+    else:
+        if print_shapes:
+            print(f'Mean (Ch 0): {torch.mean(combined_tensor[:,0,:,:])} // Mean (Ch 1): {torch.mean(combined_tensor[:,1,:,:])} // Mean (Ch 2): {torch.mean(combined_tensor[:,2,:,:])}')
+
+        fig, ax = plt.subplots(num_rows, num_cols*(num_chan+1), squeeze=False, figsize=(fig_size*num_cols*(num_chan+1), fig_size*num_rows), constrained_layout=True)
+
+        for row in range(0, num_rows):
+            i = 0
+            for col in range(0, num_cols):
+                for chan in range(0, num_chan):
+                    img_list=[]
+                    min_list=[]
+                    max_list=[]
+
+                    # Match the colormap across all images in this row and channel.
+                    for matched_col in range(0, num_cols):
+                        img = combined_tensor[row*num_cols+matched_col, chan, :, :]
+                        img_list.append(img)
+                        min_list.append(torch.min(img).item())
+                        max_list.append(torch.max(img).item())
+                    norm = Normalize(vmin=min(min_list), vmax=max(max_list))
+
+                    img = img_list[col]
+                    ax[row, i].axis('off')
+                    ax[row, i].imshow(img.squeeze(), cmap=cmap, norm=norm)
+                    i += 1
+
+                if col < num_cols - 1:
+                    blank = torch.ones_like(img)
+                    ax[row, i].axis('off')
+                    ax[row, i].imshow(blank.squeeze())
+                    i += 1
 
     smart_show()
 
